@@ -54,24 +54,27 @@ sys_sbrk(void)
 
 uint64
 sys_sleep(void)
-{
-  int n;
-  uint ticks0;
+    {
+    int n;
+    uint ticks0;
 
-  if(argint(0, &n) < 0)
-    return -1;
-  acquire(&tickslock);
-  ticks0 = ticks;
-  while(ticks - ticks0 < n){
-    if(myproc()->killed){
-      release(&tickslock);
-      return -1;
+    backtrace(); // code added
+
+    if(argint(0, &n) < 0)
+        return -1;
+    acquire(&tickslock);
+    ticks0 = ticks;
+    while(ticks - ticks0 < n){
+        if(myproc()->killed){
+        release(&tickslock);
+        return -1;
+        }
+        sleep(&ticks, &tickslock);
     }
-    sleep(&ticks, &tickslock);
-  }
-  release(&tickslock);
-  return 0;
+    release(&tickslock);
+    return 0;
 }
+
 
 uint64
 sys_kill(void)
@@ -95,3 +98,28 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64 sys_sigalarm(void) {
+    int arg1;
+    uint64 arg2;
+    struct proc* p = myproc();
+    if(argint(0, &arg1) < 0)
+        return -1;
+    if(argaddr(1, &arg2) < 0)
+        return -1;
+    
+    p->alarm = arg1;
+    p->callback = arg2;
+
+    return 0;
+}
+
+uint64 sys_sigreturn(void) {
+    struct proc* p = myproc();
+
+    savetrapframe(p->trapframe, p->trapframe_dup);
+    p->callback_once_flag = 0;
+    
+    return 0;
+}
+
