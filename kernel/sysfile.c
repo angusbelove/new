@@ -283,6 +283,7 @@ create(char *path, short type, short major, short minor)
   return ip;
 }
 
+
 uint64
 sys_open(void)
 {
@@ -313,6 +314,35 @@ sys_open(void)
       iunlockput(ip);
       end_op();
       return -1;
+    }
+
+    if ((omode & O_NOFOLLOW) == 0) {
+      int loop_limit = 10;
+      int nloop = 0;
+    
+      while (ip->type == T_SYMLINK && nloop < loop_limit) {
+          nloop++;
+          char symlink[MAXPATH];
+
+          if (readi(ip, 0, (uint64)symlink, 0, MAXPATH) != MAXPATH) {
+            iunlockput(ip);
+            end_op();
+            return -1;
+          }
+
+          iunlockput(ip);
+          if ((ip = namei(symlink)) == 0) {
+            end_op();
+            return -1;
+          }
+          ilock(ip);
+      }
+    
+      if (ip->type == T_SYMLINK) {
+        iunlockput(ip);
+        end_op();
+        return -1;
+      }
     }
   }
 
@@ -350,6 +380,7 @@ sys_open(void)
 
   return fd;
 }
+
 
 uint64
 sys_mkdir(void)
@@ -482,5 +513,27 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+uint64 
+sys_symlink(void) { //不能用symlink(char *target, char *path)
+  char target[MAXPATH],path[MAXPATH];
+  struct inode *ip;
+  if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+    return -1;
+  begin_op();
+  // create a new inode
+  if ((ip = create(path,T_SYMLINK,0,0)) == 0) {
+    end_op();
+    return -1;
+  }
+  // store target into inode's data
+  if (writei(ip,0,(uint64)target,0,MAXPATH) != MAXPATH) { //这里target明明是个字符串，为什么可以直接变成64位地址？
+// 因为target最后还是会调用memmove方法，被存储到某个设备的某块的buf中的data字段中，所以暂时转换一下无所谓
+    panic("writei fail in symlink");
+  }
+  iunlockput(ip);
+  end_op();
   return 0;
 }
